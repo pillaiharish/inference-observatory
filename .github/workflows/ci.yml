@@ -45,13 +45,16 @@ jobs:
   telemetry-static:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: shell syntax check (preflight)
         run: bash -n scripts/preflight-gpu.sh
 
       - name: shell syntax check (validate)
         run: bash -n scripts/validate-telemetry.sh
+
+      - name: Prometheus JSON parser fixture tests
+        run: ./tests/test-validate-telemetry-parser.sh
 
       - name: Compose config validates
         run: |

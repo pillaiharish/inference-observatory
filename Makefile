@@ -26,8 +26,10 @@ ENV_FALLBACK := deploy/.env.example
 # commands like `make telemetry-config` work without a manual copy.
 ifeq ($(wildcard $(ENV_FILE)),$(ENV_FILE))
   COMPOSE_ENV := --env-file $(ENV_FILE)
+  ENV_FILE_OR_FALLBACK := $(ENV_FILE)
 else
   COMPOSE_ENV := --env-file $(ENV_FALLBACK)
+  ENV_FILE_OR_FALLBACK := $(ENV_FALLBACK)
 endif
 
 all: build
@@ -76,4 +78,4 @@ telemetry-logs:
 	$(COMPOSE) $(COMPOSE_ENV) logs -f
 
 telemetry-validate:
-	./scripts/validate-telemetry.sh
+	OBSERVATORY_ENV_FILE=$(ENV_FILE_OR_FALLBACK) ./scripts/validate-telemetry.sh

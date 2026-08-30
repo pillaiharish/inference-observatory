@@ -80,8 +80,16 @@ nvidia-smi --query-gpu=index,name,memory.total --format=csv,noheader 2>/dev/null
 done
 
 # --- Docker NVIDIA Container Toolkit ----------------------------------------
+#
+# Use a pinned NVIDIA CUDA base image (not the DCGM Exporter image,
+# which has its own entrypoint and does not reliably run nvidia-smi).
+# The base flavor is the minimal CUDA image; nvidia-smi is available
+# inside the container via the NVIDIA Container Toolkit driver mount.
+# Image: nvidia/cuda:12.6.0-base-ubuntu22.04 (pinned, no "latest").
 
-if ! docker run --rm --gpus all nvcr.io/nvidia/k8s/dcgm-exporter:4.6.0-4.8.3-distroless nvidia-smi --query-gpu=name --format=csv,noheader >/dev/null 2>&1; then
+CUDA_BASE_IMAGE="nvidia/cuda:12.6.0-base-ubuntu22.04"
+
+if ! docker run --rm --gpus all "${CUDA_BASE_IMAGE}" nvidia-smi --query-gpu=name --format=csv,noheader >/dev/null 2>&1; then
   fail "Docker cannot access an NVIDIA GPU."
   info "Install the NVIDIA Container Toolkit:"
   info "  https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html"

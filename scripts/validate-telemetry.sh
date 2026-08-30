@@ -4,43 +4,104 @@
 # telemetry stack by querying Prometheus itself (not just curling
 # endpoints directly).
 #
-# Proves:
-#   - Prometheus is ready
-#   - the vllm scrape target is UP
-#   - the dcgm scrape target is UP
-#   - at least one vllm:* metric family is ingested
-#   - at least one DCGM_FI_* metric family is ingested
-#   - a tiny inference request succeeds (telemetry stimulus)
+# Validation sequence:
+#   1.  Verify script prerequisites (curl, python3)
+#   2.  Wait for Prometheus readiness (bounded retry)
+#   3.  Wait for vLLM Prometheus target UP (bounded retry)
+#   4.  Wait for DCGM Prometheus target UP (bounded retry)
+#   5.  Verify a baseline vLLM metric exists in Prometheus
+#   6.  Verify a baseline DCGM metric exists in Prometheus
+#   7.  Send a tiny inference request (telemetry stimulus)
+#   8.  Brief retry for request/token metric ingestion
+#   9.  Verify a request/token-related vLLM metric is queryable
+#   10. Print concise success summary
 #
 # Usage:
 #   ./scripts/validate-telemetry.sh
 #
 # Environment:
-#   PROMETHEUS_URL         default http://127.0.0.1:9090
-#   VLLM_URL               default http://127.0.0.1:8000
-#   VLLM_MODEL             default Qwen/Qwen3-0.6B
-#   TELEMETRY_STARTUP_TIMEOUT_SECONDS  default 600
+#   OBSERVATORY_ENV_FILE          optional env file to source (set by Makefile)
+#   PROMETHEUS_URL                default http://127.0.0.1:9090
+#   VLLM_URL                      default http://127.0.0.1:8000
+#   VLLM_MODEL                    default Qwen/Qwen3-0.6B
+#   TELEMETRY_STARTUP_TIMEOUT_SECONDS   default 600
 #
 set -euo pipefail
+
+# --- Load shared environment -------------------------------------------------
+#
+# If OBSERVATORY_ENV_FILE is set (by the Makefile), source it so the
+# validator uses the same model/ports as Compose. deploy/.env is
+# project-controlled local configuration; sourcing it is safe.
+if [ -n "${OBSERVATORY_ENV_FILE:-}" ] && [ -f "${OBSERVATORY_ENV_FILE}" ]; then
+  # shellcheck source=/dev/null
+  . "${OBSERVATORY_ENV_FILE}"
+fi
 
 PROMETHEUS_URL="${PROMETHEUS_URL:-http://127.0.0.1:9090}"
 VLLM_URL="${VLLM_URL:-http://127.0.0.1:8000}"
 VLLM_MODEL="${VLLM_MODEL:-Qwen/Qwen3-0.6B}"
 TIMEOUT_SECONDS="${TELEMETRY_STARTUP_TIMEOUT_SECONDS:-600}"
 
+# Derive default port from the configured VLLM_PORT / PROMETHEUS_PORT if set.
+if [ -z "${PROMETHEUS_URL:-}" ]; then
+  PROMETHEUS_URL="http://127.0.0.1:${PROMETHEUS_PORT:-9090}"
+fi
+if [ -z "${VLLM_URL:-}" ]; then
+  VLLM_URL="http://127.0.0.1:${VLLM_PORT:-8000}"
+fi
+
 pass() { printf '  [PASS] %s\n' "$1"; }
 fail() { printf '  [FAIL] %s\n' "$1" >&2; }
 info() { printf '       %s\n' "$1"; }
 
-# require curl
+# --- JSON parsing helper (Step 1: prerequisites) -----------------------------
+
 if ! command -v curl >/dev/null 2>&1; then
   echo "ERROR: curl is required but not installed." >&2
   exit 1
 fi
 
-# wait_for URL LABEL — bounded retry loop.
-# Returns 0 once the URL responds with HTTP 200, 1 on timeout.
-wait_for() {
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "ERROR: python3 is required for Prometheus JSON parsing but is not installed." >&2
+  echo "       Install python3: https://www.python.org/downloads/" >&2
+  exit 1
+fi
+
+# prom_result_nonempty — read Prometheus API JSON from stdin, exit 0 if
+# the response status is "success" and the result vector is non-empty,
+# exit 1 otherwise. Uses python3 stdlib only (no jq dependency).
+prom_result_nonempty() {
+  python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+if d.get("status") != "success":
+    sys.exit(1)
+result = d.get("data", {}).get("result", [])
+if not isinstance(result, list) or len(result) == 0:
+    sys.exit(1)
+sys.exit(0)
+'
+}
+
+# prom_query QUERY — run an instant PromQL query, print JSON to stdout.
+prom_query() {
+  curl -s "${PROMETHEUS_URL}/api/v1/query" --data-urlencode "query=$1" 2>/dev/null
+}
+
+# prom_query_nonempty QUERY — return 0 if the query yields a non-empty
+# result vector, 1 otherwise.
+prom_query_nonempty() {
+  prom_query "$1" 2>/dev/null | prom_result_nonempty
+}
+
+# --- Bounded retry helpers ---------------------------------------------------
+
+# wait_for_http URL LABEL — bounded retry for an HTTP 200 response.
+wait_for_http() {
   local url="$1"
   local label="$2"
   local elapsed=0
@@ -60,23 +121,49 @@ wait_for() {
   return 1
 }
 
-# prom_query QUERY — run an instant PromQL query, print JSON result.
-prom_query() {
-  curl -s "${PROMETHEUS_URL}/api/v1/query" --data-urlencode "query=$1" 2>/dev/null
+# wait_for_target_up JOB — bounded retry for a Prometheus scrape target
+# to report UP. Queries `up{job="..."} == 1` and checks the result vector
+# is non-empty via structured JSON parsing.
+wait_for_target_up() {
+  local job="$1"
+  local elapsed=0
+  printf '  [WAIT] Prometheus target %s UP (timeout %ss)\n' "$job" "$TIMEOUT_SECONDS"
+  while [ "$elapsed" -lt "$TIMEOUT_SECONDS" ]; do
+    if prom_query_nonempty "up{job=\"${job}\"} == 1" 2>/dev/null; then
+      printf '  [PASS] %s target UP (after %ss)\n' "$job" "$elapsed"
+      return 0
+    fi
+    printf '       ...waiting (%ss/%ss)\n' "$elapsed" "$TIMEOUT_SECONDS"
+    sleep 5
+    elapsed=$((elapsed + 5))
+  done
+  fail "Prometheus target ${job} did not become UP within ${TIMEOUT_SECONDS}s"
+  return 1
 }
 
-# target_up JOB — returns "true" if the named scrape job is UP in
-# Prometheus, "false" otherwise.
-target_up() {
-  local job="$1"
-  local result
-  result=$(prom_query "up{job=\"${job}\"}" 2>/dev/null | grep -o '"value":\[[0-9]*,"1"\]' || true)
-  if [ -n "$result" ]; then
-    echo "true"
-  else
-    echo "false"
-  fi
+# wait_for_metric METRIC LABEL — bounded retry for a PromQL instant
+# query to return a non-empty result vector. Uses a shorter timeout
+# (30s) since this is post-startup metric ingestion, not service boot.
+wait_for_metric() {
+  local metric="$1"
+  local label="$2"
+  local metric_timeout=30
+  local elapsed=0
+  printf '  [WAIT] %s (timeout %ss)\n' "$label" "$metric_timeout"
+  while [ "$elapsed" -lt "$metric_timeout" ]; do
+    if prom_query_nonempty "${metric}" 2>/dev/null; then
+      printf '  [PASS] %s present (after %ss)\n' "$label" "$elapsed"
+      return 0
+    fi
+    printf '       ...waiting (%ss/%ss)\n' "$elapsed" "$metric_timeout"
+    sleep 3
+    elapsed=$((elapsed + 3))
+  done
+  fail "$label not found within ${metric_timeout}s"
+  return 1
 }
+
+# --- Validation sequence -----------------------------------------------------
 
 echo "==> inference-observatory telemetry validation"
 echo "    Prometheus: ${PROMETHEUS_URL}"
@@ -85,71 +172,65 @@ echo "    Model:      ${VLLM_MODEL}"
 echo "    Timeout:    ${TIMEOUT_SECONDS}s"
 echo ""
 
-# --- 1. Prometheus readiness -------------------------------------------------
+# --- 1. Prerequisites --------------------------------------------------------
 
-echo "1/6  Prometheus readiness"
-if wait_for "${PROMETHEUS_URL}/-/ready" "Prometheus /-/ready"; then
-  :
-else
-  exit 1
-fi
-
-# --- 2. vLLM target UP -------------------------------------------------------
-
+echo "1/10 Script prerequisites"
+pass "curl available"
+pass "python3 available: $(python3 --version 2>&1)"
 echo ""
-echo "2/6  vLLM scrape target"
-if [ "$(target_up vllm)" = "true" ]; then
-  pass "Prometheus reports vllm target UP"
-else
-  fail "Prometheus does not report vllm target as UP"
+
+# --- 2. Prometheus readiness -------------------------------------------------
+
+echo "2/10 Prometheus readiness"
+wait_for_http "${PROMETHEUS_URL}/-/ready" "Prometheus /-/ready" || exit 1
+echo ""
+
+# --- 3. vLLM target UP -------------------------------------------------------
+
+echo "3/10 vLLM scrape target"
+wait_for_target_up "vllm" || {
   info "Check: ${PROMETHEUS_URL}/api/v1/targets"
-  info "Ensure vLLM started and /metrics is reachable at vllm:8000 inside the Compose network."
+  info "Ensure vLLM started and /metrics is reachable at vllm:8000."
   exit 1
-fi
-
-# --- 3. DCGM target UP -------------------------------------------------------
-
+}
 echo ""
-echo "3/6  DCGM scrape target"
-if [ "$(target_up dcgm)" = "true" ]; then
-  pass "Prometheus reports dcgm target UP"
-else
-  fail "Prometheus does not report dcgm target as UP"
+
+# --- 4. DCGM target UP -------------------------------------------------------
+
+echo "4/10 DCGM scrape target"
+wait_for_target_up "dcgm" || {
   info "Check: ${PROMETHEUS_URL}/api/v1/targets"
-  info "Ensure DCGM Exporter started and /metrics is reachable at dcgm-exporter:9400 inside the Compose network."
+  info "Ensure DCGM Exporter started and /metrics is reachable at dcgm-exporter:9400."
   exit 1
-fi
-
-# --- 4. vLLM metric family present ------------------------------------------
-
+}
 echo ""
-echo "4/6  vLLM metric family"
+
+# --- 5. Baseline vLLM metric -------------------------------------------------
+
+echo "5/10 Baseline vLLM metric"
 vllm_metric_found=""
 for metric in \
   "vllm:num_requests_running" \
   "vllm:num_requests_waiting" \
-  "vllm:kv_cache_usage_perc" \
-  "vllm:prompt_tokens_total" \
-  "vllm:generation_tokens_total"; do
-  result=$(prom_query "${metric}" 2>/dev/null | grep -o '"metricName"' || true)
-  if [ -n "$result" ]; then
+  "vllm:kv_cache_usage_perc"; do
+  if prom_query_nonempty "${metric}" 2>/dev/null; then
     vllm_metric_found="$metric"
     break
   fi
 done
 if [ -n "$vllm_metric_found" ]; then
-  pass "vLLM metric present: ${vllm_metric_found}"
+  pass "Baseline vLLM metric present: ${vllm_metric_found}"
 else
-  fail "No vLLM metric family found in Prometheus"
-  info "Expected at least one of: vllm:num_requests_running, vllm:num_requests_waiting,"
-  info "  vllm:kv_cache_usage_perc, vllm:prompt_tokens_total, vllm:generation_tokens_total"
+  fail "No baseline vLLM metric found in Prometheus"
+  info "Expected at least one of: vllm:num_requests_running,"
+  info "  vllm:num_requests_waiting, vllm:kv_cache_usage_perc"
   exit 1
 fi
-
-# --- 5. DCGM metric family present ------------------------------------------
-
 echo ""
-echo "5/6  DCGM metric family"
+
+# --- 6. Baseline DCGM metric -------------------------------------------------
+
+echo "6/10 Baseline DCGM metric"
 dcgm_metric_found=""
 for metric in \
   "DCGM_FI_DEV_GPU_UTIL" \
@@ -157,25 +238,24 @@ for metric in \
   "DCGM_FI_DEV_GPU_TEMP" \
   "DCGM_FI_DEV_POWER_USAGE" \
   "DCGM_FI_DEV_SM_CLOCK"; do
-  result=$(prom_query "${metric}" 2>/dev/null | grep -o '"metricName"' || true)
-  if [ -n "$result" ]; then
+  if prom_query_nonempty "${metric}" 2>/dev/null; then
     dcgm_metric_found="$metric"
     break
   fi
 done
 if [ -n "$dcgm_metric_found" ]; then
-  pass "DCGM metric present: ${dcgm_metric_found}"
+  pass "Baseline DCGM metric present: ${dcgm_metric_found}"
 else
-  fail "No DCGM_FI_ metric family found in Prometheus"
+  fail "No baseline DCGM_FI_ metric found in Prometheus"
   info "Expected at least one of: DCGM_FI_DEV_GPU_UTIL, DCGM_FI_DEV_FB_USED,"
   info "  DCGM_FI_DEV_GPU_TEMP, DCGM_FI_DEV_POWER_USAGE, DCGM_FI_DEV_SM_CLOCK"
   exit 1
 fi
-
-# --- 6. Inference request (telemetry stimulus) -------------------------------
-
 echo ""
-echo "6/6  Inference request"
+
+# --- 7. Inference request (telemetry stimulus) -------------------------------
+
+echo "7/10 Inference request"
 printf '       Sending tiny request to %s/v1/completions ...\n' "$VLLM_URL"
 response=$(curl -s -w '\n%{http_code}' \
   "${VLLM_URL}/v1/completions" \
@@ -198,10 +278,45 @@ else
   info "Response body: ${body:0:300}"
   exit 1
 fi
+echo ""
 
+# --- 8. Wait for request/token metric ingestion ------------------------------
+
+echo "8/10 Wait for request/token metric ingestion"
+request_metric_found=""
+for metric in \
+  "vllm:prompt_tokens_total" \
+  "vllm:generation_tokens_total"; do
+  if wait_for_metric "${metric}" "${metric}" 2>/dev/null; then
+    request_metric_found="$metric"
+    break
+  fi
+done
+if [ -z "$request_metric_found" ]; then
+  info "No request/token counter observed yet (may need more requests or time)."
+fi
+echo ""
+
+# --- 9. Verify request/token metric ------------------------------------------
+
+echo "9/10 Request/token metric verification"
+if [ -n "$request_metric_found" ]; then
+  pass "Request/token metric present: ${request_metric_found}"
+else
+  fail "No request/token metric found after inference request"
+  info "Expected at least one of: vllm:prompt_tokens_total, vllm:generation_tokens_total"
+  info "The request may not have completed, or vLLM may not have flushed metrics yet."
+  exit 1
+fi
+echo ""
+
+# --- 10. Success summary -----------------------------------------------------
+
+echo "10/10 Summary"
 echo ""
 echo "==> telemetry validation PASSED"
 echo "    Prometheus: both targets UP"
-echo "    vLLM metrics: ${vllm_metric_found}"
-echo "    DCGM metrics: ${dcgm_metric_found}"
+echo "    Baseline vLLM metric: ${vllm_metric_found}"
+echo "    Baseline DCGM metric: ${dcgm_metric_found}"
 echo "    Inference request: HTTP 200"
+echo "    Request/token metric: ${request_metric_found}"

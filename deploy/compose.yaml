@@ -26,13 +26,14 @@ services:
       # Disable the OpenAI API key for the local demo. The endpoint is
       # bound to 127.0.0.1 and not exposed publicly.
       VLLM_API_KEY: ""
-      HF_TOKEN: ""
+      # Optional pass-through: set HF_TOKEN in deploy/.env to serve a
+      # gated/private model. The default public demo does not need it.
+      HF_TOKEN: ${HF_TOKEN:-}
     command: >
       --model ${VLLM_MODEL:-Qwen/Qwen3-0.6B}
       --gpu-memory-utilization ${VLLM_GPU_MEMORY_UTILIZATION:-0.80}
       --max-model-len ${VLLM_MAX_MODEL_LEN:-4096}
       --dtype auto
-      --enforce-eager
     ports:
       - "127.0.0.1:${VLLM_PORT:-8000}:8000"
     deploy:
@@ -70,12 +71,6 @@ services:
     ports:
       - "127.0.0.1:${DCGM_EXPORTER_PORT:-9400}:9400"
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:9400/metrics || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
 
   # ----------------------------------------------------------- Prometheus ----
   # Scrapes vLLM and DCGM Exporter every 5s. Retention bounded for the

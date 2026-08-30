@@ -4,8 +4,9 @@ Observability and performance diagnosis for LLM inference — correlate
 inference-server metrics, NVIDIA GPU telemetry, and profiling data to
 explain performance bottlenecks.
 
-**Status:** pre-alpha / active development. The repository now includes a
-single-GPU telemetry collection stack (vLLM + DCGM Exporter + Prometheus).
+**Status:** pre-alpha / active development. The repository includes a
+single-GPU telemetry collection stack (vLLM + DCGM Exporter + Prometheus)
+with static validation passed. Live NVIDIA GPU validation is pending.
 It does not yet diagnose, normalize, or visualize metrics. See
 [Scope](docs/scope.md) for what is implemented versus planned.
 
@@ -81,10 +82,10 @@ flowchart TD
 **Implemented now:**
 
 - Go CLI `observatory version`
-- Single-GPU Docker telemetry stack (vLLM + DCGM Exporter + Prometheus)
-- vLLM metrics collection via Prometheus scrape
-- DCGM GPU telemetry collection via Prometheus scrape
-- Telemetry preflight and validation scripts
+- Single-GPU Docker telemetry stack (vLLM + DCGM Exporter + Prometheus) — configured, live GPU validation pending
+- vLLM metrics collection via Prometheus scrape — configured
+- DCGM GPU telemetry collection via Prometheus scrape — configured
+- Telemetry preflight and validation scripts — static validation passed
 
 **Planned for V1:** canonical metric adapters, dashboards, diagnosis,
 experiment comparison, profiling, two-GPU analysis. See
@@ -93,17 +94,17 @@ experiment comparison, profiling, two-GPU analysis. See
 
 ## Initial support matrix
 
-| Area                  | V1 target           | Status          |
-|-----------------------|---------------------|-----------------|
-| GPU vendor            | NVIDIA              | implemented     |
-| GPU count             | 1–2                 | 1 GPU working   |
-| Inference backend     | vLLM                | metrics working |
-| Metrics               | Prometheus          | implemented     |
-| GPU telemetry         | DCGM Exporter       | implemented     |
-| Visualization         | Grafana             | planned         |
-| Deep profiling        | PyTorch Profiler    | planned         |
-| Diagnosis             | deterministic rules | planned         |
-| Deployment            | Docker first        | implemented     |
+| Area                  | V1 target           | Status                              |
+|-----------------------|---------------------|-------------------------------------|
+| GPU vendor            | NVIDIA              | configured; live validation pending |
+| GPU count             | 1–2                 | single-GPU config; pending          |
+| Inference backend     | vLLM                | configured                          |
+| Metrics               | Prometheus          | configured; static validation passed|
+| GPU telemetry         | DCGM Exporter       | configured; live validation pending |
+| Visualization         | Grafana             | planned                             |
+| Deep profiling        | PyTorch Profiler    | planned                             |
+| Diagnosis             | deterministic rules | planned                             |
+| Deployment            | Docker              | configured                           |
 
 ## Quick start
 

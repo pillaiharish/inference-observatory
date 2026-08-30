@@ -45,6 +45,7 @@ The live telemetry stack requires:
 - **Docker Engine**
 - **Docker Compose v2**
 - **NVIDIA Container Toolkit** (so Docker can access the GPU)
+- **python3** (for Prometheus JSON parsing in validate-telemetry.sh)
 
 macOS developers can run static checks (`make check`, `make telemetry-config`,
 `bash -n scripts/*.sh`) but cannot run the live stack.
@@ -180,8 +181,11 @@ Verified against the DCGM Exporter `default-counters.csv`
 | `DCGM_FI_PROF_PCIE_RX_BYTES`   | Gauge | PCIe receive throughput (B/s)   |
 | `DCGM_FI_PROF_PCIE_TX_BYTES`   | Gauge | PCIe transmit throughput (B/s)  |
 
-> **Note:** `DCGM_FI_PROF_*` fields require datacenter GPUs (Volta or
-> newer) and may not appear on consumer GPUs.
+> **Note:** `DCGM_FI_PROF_*` fields are profiling metrics. Their
+> availability depends on GPU class/capability — they require
+> datacenter GPUs (Volta or newer) and may not appear on consumer GPUs.
+> The telemetry validator relies on stable basic `DCGM_FI_DEV_*`
+> metrics only, not `DCGM_FI_PROF_*` metrics.
 
 ## Troubleshooting
 

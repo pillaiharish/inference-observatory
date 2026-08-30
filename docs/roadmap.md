@@ -19,8 +19,9 @@ made. Each stage is delivered through reviewed PRs.
 - NVIDIA DCGM Exporter
 - scrape validation
 
-**Implemented.** Single-GPU telemetry collection (vLLM + DCGM Exporter +
-Prometheus) with preflight and validation scripts. See
+**Implementation complete pending live NVIDIA GPU validation.**
+Single-GPU telemetry collection (vLLM + DCGM Exporter + Prometheus) with
+preflight and validation scripts. Static validation passed. See
 `docs/telemetry-stack.md`.
 
 ## v0.3 — Canonical metrics
