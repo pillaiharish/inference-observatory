@@ -3,9 +3,8 @@
 # configure-github.sh — idempotent GitHub repository metadata setup for
 # pillaiharish/inference-observatory.
 #
-# Configures: repository description, homepage, topics, and a
-# restrained label taxonomy. Does NOT touch branch protection, merge
-# rules, or secrets.
+# Configures: repository description, topics, and a restrained label
+# taxonomy. Does NOT touch branch protection, merge rules, or secrets.
 #
 # This is an owner/admin helper. It is NOT run by CI and was NOT run
 # during the foundation PR. Review it before executing.

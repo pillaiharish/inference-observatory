@@ -61,10 +61,12 @@ func TestVersionFlag(t *testing.T) {
 	}
 }
 
-// TestMainExitCodes verifies the documented exit-code contract end to end
-// by invoking the real main() path through os.Exit. Success cases exit 0,
-// usage errors exit 2, and runtime errors exit 1.
-func TestMainExitCodes(t *testing.T) {
+// TestRunExitClassification verifies the documented exit-code contract by
+// calling run() and checking error classification: success cases return
+// nil (exit 0), usage errors are errUsage (exit 2), and other runtime
+// errors would exit 1. The real main()/os.Exit mapping is exercised
+// separately at the process level (see ./bin/observatory frobnicate).
+func TestRunExitClassification(t *testing.T) {
 	cases := []struct {
 		name    string
 		args    []string
