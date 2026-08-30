@@ -86,29 +86,32 @@ run gh repo edit "$REPO" \
   --add-topic "$topic_arg"
 
 # --- labels ------------------------------------------------------------------
+#
+# Label taxonomy encoded as "name|color|description". The pipe delimiter
+# is used because label names ("good first issue", "help wanted") and
+# descriptions contain spaces, so whitespace splitting is unsafe.
 
-# Label taxonomy: name color description
 LABELS=(
-  "type/bug            d73a4a  Something is not working"
-  "type/feature        a2eeef  New functionality"
-  "type/docs           0075ca  Documentation improvement"
-  "type/chore          d4c5f9  Maintenance / refactoring"
+  "type/bug|d73a4a|Something is not working"
+  "type/feature|a2eeef|New functionality"
+  "type/docs|0075ca|Documentation improvement"
+  "type/chore|d4c5f9|Maintenance / refactoring"
 
-  "area/cli            c5def5  CLI command surface"
-  "area/metrics        c5def5  Metric adapters and model"
-  "area/vllm           c5def5  vLLM integration"
-  "area/gpu            c5def5  NVIDIA / DCGM telemetry"
-  "area/profiling      c5def5  PyTorch profiling"
-  "area/diagnosis      c5def5  Diagnosis engine"
-  "area/deployment     c5def5  Docker / deploy"
-  "area/docs           0075ca  Documentation"
+  "area/cli|c5def5|CLI command surface"
+  "area/metrics|c5def5|Metric adapters and model"
+  "area/vllm|c5def5|vLLM integration"
+  "area/gpu|c5def5|NVIDIA / DCGM telemetry"
+  "area/profiling|c5def5|PyTorch profiling"
+  "area/diagnosis|c5def5|Diagnosis engine"
+  "area/deployment|c5def5|Docker / deploy"
+  "area/docs|0075ca|Documentation"
 
-  "priority/p0         b60205  Top priority"
-  "priority/p1         fbca04  Important"
-  "priority/p2         0e8a16  Nice to have"
+  "priority/p0|b60205|Top priority"
+  "priority/p1|fbca04|Important"
+  "priority/p2|0e8a16|Nice to have"
 
-  "good first issue    7057ff  Good for newcomers"
-  "help wanted         008672  Extra attention needed"
+  "good first issue|7057ff|Good for newcomers"
+  "help wanted|008672|Extra attention needed"
 )
 
 echo "==> Configuring labels on $REPO"
@@ -117,15 +120,16 @@ if [ "$DRY_RUN" -eq 0 ]; then
   existing="$(gh label list --repo "$REPO" --json name -q '.[].name' 2>/dev/null || true)"
 fi
 for entry in "${LABELS[@]}"; do
-  # split: name color description (description may contain spaces)
-  set -- $entry
-  name="$1"; color="$2"; desc="${entry#$name $color }"
+  name="${entry%%|*}"
+  rest="${entry#*|}"
+  color="${rest%%|*}"
+  desc="${rest#*|}"
   if [ "$DRY_RUN" -eq 1 ]; then
-    printf '[dry-run] gh label %s %s color=%s desc=%q repo=%s\n' \
-      "create-or-edit" "$name" "$color" "$desc" "$REPO"
+    printf '[dry-run] gh label create/edit %q color=%s desc=%q repo=%s\n' \
+      "$name" "$color" "$desc" "$REPO"
     continue
   fi
-  if printf '%s\n' "$existing" | grep -qx "$name"; then
+  if printf '%s\n' "$existing" | grep -qx -- "$name"; then
     gh label edit "$name" --color "$color" --description "$desc" --repo "$REPO" >/dev/null
   else
     gh label create "$name" --color "$color" --description "$desc" --repo "$REPO" >/dev/null

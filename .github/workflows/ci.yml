@@ -17,6 +17,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          # go.mod declares go 1.26 (current stable). setup-go installs
+          # that line on the runner and enables module caching.
           cache: true
 
       - name: gofmt

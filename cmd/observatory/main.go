@@ -7,6 +7,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -41,8 +42,16 @@ Exit codes:
   2  usage error
 `
 
+// errUsage signals a usage/invalid-command error. main maps it to
+// exit code 2 per the documented contract; all other errors exit 1.
+var errUsage = errors.New("usage error")
+
 func main() {
 	if err := run(os.Stdout, os.Args[1:]); err != nil {
+		if errors.Is(err, errUsage) {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -74,5 +83,5 @@ func run(stdout io.Writer, args []string) error {
 }
 
 func usageError(cmd string) error {
-	return fmt.Errorf("unknown command %q\n\n%s", strings.Trim(cmd, ""), strings.TrimSpace(usage))
+	return fmt.Errorf("%w: unknown command %q\n\n%s", errUsage, strings.Trim(cmd, ""), strings.TrimSpace(usage))
 }

@@ -13,29 +13,30 @@ canonical model, correlates them across a common observation window,
 and runs deterministic diagnosis rules to explain bottlenecks.
 
 ```mermaid
-benchmark / workload
-        |
-        v
-     vLLM
-   /      \
-vLLM        GPU
-metrics     telemetry
-   |          |
-   v          v
-Prometheus  DCGM
-   |          |
-   +-----+----+
-         |
-         v
-  inference-observatory
-         |
-  source adapters
-         |
-  canonical metric model
-         |
-  correlation + diagnosis
-         |
-  report / CLI / Grafana
+flowchart TD
+    workload["benchmark / workload"]
+    vllm["vLLM"]
+    vllmMetrics["vLLM metrics"]
+    gpuTelemetry["GPU telemetry"]
+    prom["Prometheus"]
+    dcgm["DCGM"]
+    obs["inference-observatory"]
+    adapters["source adapters"]
+    model["canonical metric model"]
+    correlation["correlation + diagnosis"]
+    presentation["report / CLI / Grafana"]
+
+    workload --> vllm
+    vllm --> vllmMetrics
+    vllm --> gpuTelemetry
+    vllmMetrics --> prom
+    gpuTelemetry --> dcgm
+    dcgm --> prom
+    prom --> obs
+    obs --> adapters
+    adapters --> model
+    model --> correlation
+    correlation --> presentation
 ```
 
 ## Layers

@@ -14,4 +14,3 @@ coverage.txt
 
 # Local agent prompt workspace (not part of the project)
 prompts/
-AGENTS.md

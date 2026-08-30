@@ -51,26 +51,30 @@ explanation of inference bottlenecks rather than a wall of charts.
 ## Planned architecture
 
 ```mermaid
-           benchmark / workload
-                   |
-                   v
-                vLLM
-              /      \
-             /        \
-    vLLM metrics      GPU
-         |          telemetry
-         |             |
-         v             v
-      Prometheus <--- DCGM
-           |
-           v
- inference-observatory
-           |
-   normalize/correlate
-           |
-       diagnose
-       /      \
-     CLI     Grafana
+flowchart TD
+    workload["benchmark / workload"]
+    vllm["vLLM"]
+    metrics["vLLM metrics"]
+    gpu["GPU telemetry"]
+    prom["Prometheus"]
+    dcgm["DCGM"]
+    obs["inference-observatory"]
+    norm["normalize / correlate"]
+    diag["diagnose"]
+    cli["CLI"]
+    graf["Grafana"]
+
+    workload --> vllm
+    vllm --> metrics
+    vllm --> gpu
+    metrics --> prom
+    gpu --> dcgm
+    dcgm --> prom
+    prom --> obs
+    obs --> norm
+    norm --> diag
+    diag --> cli
+    diag --> graf
 ```
 
 **Implemented now:** Go CLI `observatory version`, repository structure,
@@ -103,8 +107,23 @@ make build
 make test
 ```
 
+`make build` injects version metadata from git via linker flags, so the
+output reflects the current revision and build time, for example:
+
 ```text
+$ make build
 $ ./bin/observatory version
+inference-observatory v0.1.0-3-gf32b2c3
+commit: f32b2c3
+built: 2026-08-30T10:23:47Z
+```
+
+A direct `go build ./cmd/observatory` (without the Makefile `-ldflags`
+injection) falls back to default metadata:
+
+```text
+$ go build ./cmd/observatory
+$ ./observatory version
 inference-observatory dev
 commit: unknown
 built: unknown
@@ -112,7 +131,7 @@ built: unknown
 
 ```bash
 ./bin/observatory --help      # usage
-./bin/observatory frobnicate  # unknown command -> non-zero exit
+./bin/observatory frobnicate  # unknown command -> exit code 2
 ```
 
 ## Roadmap
