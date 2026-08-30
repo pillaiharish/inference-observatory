@@ -21,10 +21,16 @@
 #
 # Environment:
 #   OBSERVATORY_ENV_FILE          optional env file to source (set by Makefile)
-#   PROMETHEUS_URL                default http://127.0.0.1:9090
-#   VLLM_URL                      default http://127.0.0.1:8000
+#   PROMETHEUS_URL                explicit override (wins over PROMETHEUS_PORT)
+#   PROMETHEUS_PORT               used to derive PROMETHEUS_URL (default 9090)
+#   VLLM_URL                      explicit override (wins over VLLM_PORT)
+#   VLLM_PORT                     used to derive VLLM_URL (default 8000)
 #   VLLM_MODEL                    default Qwen/Qwen3-0.6B
 #   TELEMETRY_STARTUP_TIMEOUT_SECONDS   default 600
+#
+# Endpoint resolution precedence:
+#   explicit PROMETHEUS_URL > PROMETHEUS_PORT > 9090
+#   explicit VLLM_URL       > VLLM_PORT       > 8000
 #
 set -euo pipefail
 
@@ -38,18 +44,10 @@ if [ -n "${OBSERVATORY_ENV_FILE:-}" ] && [ -f "${OBSERVATORY_ENV_FILE}" ]; then
   . "${OBSERVATORY_ENV_FILE}"
 fi
 
-PROMETHEUS_URL="${PROMETHEUS_URL:-http://127.0.0.1:9090}"
-VLLM_URL="${VLLM_URL:-http://127.0.0.1:8000}"
+PROMETHEUS_URL="${PROMETHEUS_URL:-http://127.0.0.1:${PROMETHEUS_PORT:-9090}}"
+VLLM_URL="${VLLM_URL:-http://127.0.0.1:${VLLM_PORT:-8000}}"
 VLLM_MODEL="${VLLM_MODEL:-Qwen/Qwen3-0.6B}"
 TIMEOUT_SECONDS="${TELEMETRY_STARTUP_TIMEOUT_SECONDS:-600}"
-
-# Derive default port from the configured VLLM_PORT / PROMETHEUS_PORT if set.
-if [ -z "${PROMETHEUS_URL:-}" ]; then
-  PROMETHEUS_URL="http://127.0.0.1:${PROMETHEUS_PORT:-9090}"
-fi
-if [ -z "${VLLM_URL:-}" ]; then
-  VLLM_URL="http://127.0.0.1:${VLLM_PORT:-8000}"
-fi
 
 pass() { printf '  [PASS] %s\n' "$1"; }
 fail() { printf '  [FAIL] %s\n' "$1" >&2; }

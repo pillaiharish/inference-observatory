@@ -56,6 +56,9 @@ jobs:
       - name: Prometheus JSON parser fixture tests
         run: ./tests/test-validate-telemetry-parser.sh
 
+      - name: Telemetry env resolution tests
+        run: ./tests/test-validate-telemetry-env.sh
+
       - name: Compose config validates
         run: |
           docker compose \
