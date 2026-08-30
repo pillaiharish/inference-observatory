@@ -1,9 +1,10 @@
 # Architecture
 
 This document defines the long-term logical layers of
-`inference-observatory`. It describes the intended design; only the
-foundation layer exists today. Nothing here is implemented unless
-explicitly stated.
+`inference-observatory`. It describes the intended design. The
+foundation layer is implemented and the v0.2 telemetry collection
+stack is configured (live GPU validation pending). Nothing beyond the
+layers explicitly listed under "What exists now" is implemented.
 
 ## Overview
 
@@ -128,6 +129,11 @@ Only the `version` CLI command exists today.
 
 - `cmd/observatory` — CLI with `version` and help only.
 - `internal/buildinfo` — build-time version metadata.
+- `deploy/compose.yaml` — single-GPU Docker telemetry stack (vLLM +
+  DCGM Exporter + Prometheus). Configured; live GPU validation pending.
+- `prometheus/prometheus.yml` — scrape configuration for vLLM and DCGM.
+- `scripts/preflight-gpu.sh` — host readiness checks.
+- `scripts/validate-telemetry.sh` — Prometheus-based scrape validation.
 - Documentation, CI, contribution templates.
 
 ## What is planned
