@@ -39,3 +39,31 @@ jobs:
 
       - name: go build
         run: go build ./cmd/observatory
+
+  # Static validation of the telemetry stack configuration.
+  # Does NOT start any containers or require a GPU.
+  telemetry-static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: shell syntax check (preflight)
+        run: bash -n scripts/preflight-gpu.sh
+
+      - name: shell syntax check (validate)
+        run: bash -n scripts/validate-telemetry.sh
+
+      - name: Compose config validates
+        run: |
+          docker compose \
+            -f deploy/compose.yaml \
+            --env-file deploy/.env.example \
+            config >/dev/null
+
+      - name: Prometheus config validates
+        run: |
+          docker run --rm \
+            --entrypoint promtool \
+            -v "$PWD/prometheus:/etc/prometheus:ro" \
+            prom/prometheus:v3.14.0 \
+            check config /etc/prometheus/prometheus.yml
