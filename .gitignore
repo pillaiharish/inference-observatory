@@ -14,3 +14,7 @@ coverage.txt
 
 # Local agent prompt workspace (not part of the project)
 prompts/
+
+# Local telemetry environment (may contain secrets like HF_TOKEN)
+.env
+deploy/.env

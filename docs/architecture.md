@@ -128,6 +128,11 @@ Only the `version` CLI command exists today.
 
 - `cmd/observatory` — CLI with `version` and help only.
 - `internal/buildinfo` — build-time version metadata.
+- `deploy/compose.yaml` — single-GPU Docker telemetry stack (vLLM +
+  DCGM Exporter + Prometheus).
+- `prometheus/prometheus.yml` — scrape configuration for vLLM and DCGM.
+- `scripts/preflight-gpu.sh` — host readiness checks.
+- `scripts/validate-telemetry.sh` — Prometheus-based scrape validation.
 - Documentation, CI, contribution templates.
 
 ## What is planned

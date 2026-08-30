@@ -4,9 +4,10 @@ Observability and performance diagnosis for LLM inference — correlate
 inference-server metrics, NVIDIA GPU telemetry, and profiling data to
 explain performance bottlenecks.
 
-**Status:** pre-alpha / active development. Nothing in this repository
-collects, parses, or diagnoses metrics yet. See [Scope](docs/scope.md)
-for what is implemented versus planned.
+**Status:** pre-alpha / active development. The repository now includes a
+single-GPU telemetry collection stack (vLLM + DCGM Exporter + Prometheus).
+It does not yet diagnose, normalize, or visualize metrics. See
+[Scope](docs/scope.md) for what is implemented versus planned.
 
 ## Problem statement
 
@@ -77,29 +78,36 @@ flowchart TD
     diag --> graf
 ```
 
-**Implemented now:** Go CLI `observatory version`, repository structure,
-documentation, CI. **Planned for V1:** everything in the diagram above.
-See [docs/architecture.md](docs/architecture.md) for the layer model
-and [docs/scope.md](docs/scope.md) for the V1 boundaries.
+**Implemented now:**
 
-## Initial support matrix (planned)
+- Go CLI `observatory version`
+- Single-GPU Docker telemetry stack (vLLM + DCGM Exporter + Prometheus)
+- vLLM metrics collection via Prometheus scrape
+- DCGM GPU telemetry collection via Prometheus scrape
+- Telemetry preflight and validation scripts
 
-| Area                  | V1 target           | Status     |
-|-----------------------|---------------------|------------|
-| GPU vendor            | NVIDIA              | planned    |
-| GPU count             | 1–2                 | planned    |
-| Inference backend     | vLLM                | planned    |
-| Metrics               | Prometheus          | planned    |
-| GPU telemetry         | DCGM Exporter       | planned    |
-| Visualization         | Grafana             | planned    |
-| Deep profiling        | PyTorch Profiler    | planned    |
-| Diagnosis             | deterministic rules | planned    |
-| Deployment            | Docker first        | planned    |
+**Planned for V1:** canonical metric adapters, dashboards, diagnosis,
+experiment comparison, profiling, two-GPU analysis. See
+[docs/architecture.md](docs/architecture.md) for the layer model and
+[docs/scope.md](docs/scope.md) for the V1 boundaries.
+
+## Initial support matrix
+
+| Area                  | V1 target           | Status          |
+|-----------------------|---------------------|-----------------|
+| GPU vendor            | NVIDIA              | implemented     |
+| GPU count             | 1–2                 | 1 GPU working   |
+| Inference backend     | vLLM                | metrics working |
+| Metrics               | Prometheus          | implemented     |
+| GPU telemetry         | DCGM Exporter       | implemented     |
+| Visualization         | Grafana             | planned         |
+| Deep profiling        | PyTorch Profiler    | planned         |
+| Diagnosis             | deterministic rules | planned         |
+| Deployment            | Docker first        | implemented     |
 
 ## Quick start
 
-Only the functionality that actually exists today is shown here. There
-are no fake Prometheus or GPU commands.
+### CLI
 
 ```bash
 make build
@@ -134,21 +142,39 @@ built: unknown
 ./bin/observatory frobnicate  # unknown command -> exit code 2
 ```
 
+### Telemetry stack (requires a Linux NVIDIA GPU host)
+
+```bash
+cp deploy/.env.example deploy/.env   # optional: customize
+./scripts/preflight-gpu.sh           # verify host readiness
+make telemetry-up                    # start vLLM + DCGM + Prometheus
+make telemetry-validate              # validate scraping + metrics
+```
+
+See [docs/telemetry-stack.md](docs/telemetry-stack.md) for full
+instructions, remote access via SSH forwarding, and troubleshooting.
+
 ## Roadmap
 
-See [docs/roadmap.md](docs/roadmap.md). This PR implements the
-**v0.1 — Foundation** stage.
+See [docs/roadmap.md](docs/roadmap.md). v0.1 (Foundation) is complete.
+This repository implements the **v0.2 — Telemetry stack** stage.
 
 ## Development
 
 ```bash
-make build       # build bin/observatory with version metadata
-make test        # go test ./...
-make fmt         # gofmt -w .
-make fmt-check   # fail if gofmt would change anything
-make vet         # go vet ./...
-make check       # fmt-check + vet + test
-make clean       # remove build artefacts
+make build              # build bin/observatory with version metadata
+make test               # go test ./...
+make fmt                # gofmt -w .
+make fmt-check          # fail if gofmt would change anything
+make vet                # go vet ./...
+make check              # fmt-check + vet + test
+make clean              # remove build artefacts
+make telemetry-config   # render compose config (no GPU needed)
+make telemetry-preflight # check host GPU readiness
+make telemetry-up       # start telemetry stack (needs Linux NVIDIA GPU)
+make telemetry-down     # stop telemetry stack
+make telemetry-logs     # tail telemetry stack logs
+make telemetry-validate # validate scraping + metrics
 ```
 
 Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).

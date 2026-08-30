@@ -10,7 +10,7 @@ made. Each stage is delivered through reviewed PRs.
 - CI
 - documentation (architecture, scope, roadmap)
 
-**This is the current stage.**
+**Completed.**
 
 ## v0.2 — Telemetry stack
 
@@ -18,6 +18,10 @@ made. Each stage is delivered through reviewed PRs.
 - Prometheus
 - NVIDIA DCGM Exporter
 - scrape validation
+
+**Implemented.** Single-GPU telemetry collection (vLLM + DCGM Exporter +
+Prometheus) with preflight and validation scripts. See
+`docs/telemetry-stack.md`.
 
 ## v0.3 — Canonical metrics
 
