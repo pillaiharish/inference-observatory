@@ -1,0 +1,16 @@
+# Go build output
+bin/
+/observatory
+coverage.out
+coverage.txt
+*.out
+*.test
+
+# Editor / OS cruft
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Local agent prompt workspace (not part of the project)
+prompts/

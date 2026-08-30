@@ -1,0 +1,39 @@
+name: Feature request
+description: Propose new functionality for inference-observatory
+labels: ["type/feature"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is currently hard or impossible to do?
+    validations:
+      required: true
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence / use case
+    validations:
+      required: true
+  - type: dropdown
+    id: in-v1
+    attributes:
+      label: Belongs in current V1 scope?
+      options:
+        - "Yes"
+        - "No"
+        - "Unsure"
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
