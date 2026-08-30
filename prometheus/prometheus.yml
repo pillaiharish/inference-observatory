@@ -1,0 +1,23 @@
+# Prometheus scrape configuration for inference-observatory v0.2.
+#
+# Scrapes vLLM and DCGM Exporter inside the Compose network using
+# service DNS names. Do NOT add recording rules, alert rules, or
+# canonical metric transformations here — those belong to later
+# milestones.
+
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  # vLLM inference server metrics (vllm: prefix).
+  - job_name: vllm
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["vllm:8000"]
+
+  # NVIDIA DCGM Exporter GPU metrics (DCGM_FI_ prefix).
+  - job_name: dcgm
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["dcgm-exporter:9400"]
