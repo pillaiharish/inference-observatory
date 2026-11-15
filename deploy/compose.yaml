@@ -1,0 +1,103 @@
+# inference-observatory — v0.2 telemetry stack
+#
+# Single-GPU telemetry collection: vLLM + DCGM Exporter + Prometheus.
+# This stack collects raw telemetry only. It does NOT interpret metrics,
+# diagnose, or render dashboards.
+#
+# Requirements:
+#   Linux, NVIDIA driver, Docker Engine, Docker Compose v2,
+#   NVIDIA Container Toolkit.
+#
+# See docs/telemetry-stack.md for full instructions.
+
+name: inference-observatory
+
+services:
+  # ---------------------------------------------------------------- vLLM -----
+  # Runs the OpenAI-compatible server and exposes /metrics on :8000.
+  # Intentionally uses ONE GPU (GPU_DEVICE_ID) even if the host has more.
+  vllm:
+    image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.26.0}
+    container_name: observatory-vllm
+    environment:
+      MODEL: ${VLLM_MODEL:-Qwen/Qwen3-0.6B}
+      GPU_MEMORY_UTILIZATION: ${VLLM_GPU_MEMORY_UTILIZATION:-0.80}
+      MAX_MODEL_LEN: ${VLLM_MAX_MODEL_LEN:-4096}
+      # Disable the OpenAI API key for the local demo. The endpoint is
+      # bound to 127.0.0.1 and not exposed publicly.
+      VLLM_API_KEY: ""
+      # Optional pass-through: set HF_TOKEN in deploy/.env to serve a
+      # gated/private model. The default public demo does not need it.
+      HF_TOKEN: ${HF_TOKEN:-}
+    command: >
+      --model ${VLLM_MODEL:-Qwen/Qwen3-0.6B}
+      --gpu-memory-utilization ${VLLM_GPU_MEMORY_UTILIZATION:-0.80}
+      --max-model-len ${VLLM_MAX_MODEL_LEN:-4096}
+      --dtype auto
+    ports:
+      - "127.0.0.1:${VLLM_PORT:-8000}:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${GPU_DEVICE_ID:-0}"]
+              capabilities: [gpu]
+    shm_size: 4gb
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+
+  # -------------------------------------------------------- DCGM Exporter ----
+  # Exposes NVIDIA GPU metrics on :9400 using the DCGM_FI_ metric family.
+  # Uses cap_add SYS_ADMIN + GPU device access (not privileged mode).
+  # DCGM Exporter may see all GPUs on the node; the demo vLLM service
+  # intentionally uses only one.
+  dcgm-exporter:
+    image: ${DCGM_EXPORTER_IMAGE:-nvcr.io/nvidia/k8s/dcgm-exporter:4.6.0-4.8.3-distroless}
+    container_name: observatory-dcgm-exporter
+    cap_add:
+      - SYS_ADMIN
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+    ports:
+      - "127.0.0.1:${DCGM_EXPORTER_PORT:-9400}:9400"
+    restart: unless-stopped
+
+  # ----------------------------------------------------------- Prometheus ----
+  # Scrapes vLLM and DCGM Exporter every 5s. Retention bounded for the
+  # demo (default 24h). Uses a named volume for TSDB persistence.
+  prometheus:
+    image: ${PROMETHEUS_IMAGE:-prom/prometheus:v3.14.0}
+    container_name: observatory-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-24h}
+      - --web.enable-lifecycle
+    volumes:
+      - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    restart: unless-stopped
+    depends_on:
+      - vllm
+      - dcgm-exporter
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  prometheus-data:
